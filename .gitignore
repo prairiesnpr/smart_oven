@@ -1,0 +1,5 @@
+lib
+.vscode
+pico-go.json
+secrets.py
+*.pyc

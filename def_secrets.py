@@ -1,0 +1,5 @@
+WIFI_AP = ""
+WIFI_PWD = ""
+MQTT_HOST = ""
+DEVICE_LOCATION = "Kitchen"
+UNIQE_ID_PRE = "001"
