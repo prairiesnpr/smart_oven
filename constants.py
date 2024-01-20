@@ -16,18 +16,21 @@ ST_UP_PIN = 4  # UP
 # Think 2 is clear
 # In Pins
 # Not bothering to monitor the other inputs, just don't see a point
-ST_UP_C_PIN = 9  # Temp Up
-ST_DN_C_PIN = 10  # Temp Dwn
-ST_CL_C_PIN = 11  # Clr/Off
-ST_ON_C_PIN = 12  # Bake
-ST_BR_C_PIN = 13  # Broil
+ST_HT_IN_PIN = 7  # Heat Mode, Bake or Broil
+ST_UP_AIN_PIN = 26 # Temp Up
+ST_DN_AIN_PIN = 27  # Temp Dwn
+
+CONSIDER_OFF = 30000 # Analog pin value to consider off
+
+
+
 
 # LED In Pins
 ST_ON_LED_PIN = 14
 ST_BL_LED_PIN = 15
 
-# Actual Temp, haven't even looked at it.
-ST_T_IN_PIN = 27
+# Actual Temp
+ST_T_AIN_PIN = 28
 
 
 DEB_TIME = 10
@@ -42,6 +45,10 @@ DIR_DWN = "D"
 DIR_UP = "U"
 
 BTN_DELAY = 100  # ms
+
+BTN_STEP_DELAY = 200 # ms
+BTN_HT_DELAY = 200 # ms
+BTN_CLD_DELAY = 300 # ms
 
 CUR_TMP_RD_PER = 5000
 
@@ -113,5 +120,13 @@ TMP_CUR_TPC = ST_TPC + "/cur_temp"
 
 
 # Temp sensor
-BETA = 3950  # Verify
-KELVIN_C = 273.15  # Verify
+BETA = -410.51
+KELVIN_C = 273.15 
+
+A = 63.93648271e-03
+B = -113.5216743e-04
+C = 550.7111202e-07
+#Rt = (Vout * R1) / (Vin - Vout)
+#tk = 1/(A+(B*math.log(Rt))+C*math.pow(math.log(Rt),3))
+#tc = tk - KELVIN_C
+#tf = (tc*1.8) + 32

@@ -7,7 +7,7 @@ import machine
 from machine import Timer, Pin
 from machine import ADC
 
-from math import log
+import math
 
 from secrets import WIFI_AP, WIFI_PWD, MQTT_HOST
 
@@ -35,6 +35,9 @@ from constants import (
     BTN_DELAY,
     TMP_CUR_TPC,
     CUR_TMP_RD_PER,
+    BTN_STEP_DELAY,
+    BTN_HT_DELAY,
+    BTN_CLD_DELAY,
 )
 
 from constants import (
@@ -42,14 +45,14 @@ from constants import (
     ST_CL_PIN,
     ST_UP_PIN,
     ST_DN_PIN,
-    ST_ON_C_PIN,
-    ST_CL_C_PIN,
-    ST_DN_C_PIN,
-    ST_UP_C_PIN,
-    ST_T_IN_PIN,
+    ST_HT_IN_PIN,
+    ST_T_AIN_PIN,
+    ST_UP_AIN_PIN,
+    ST_DN_AIN_PIN,
+    CONSIDER_OFF,
 )
 
-from constants import KELVIN_C, BETA
+from constants import KELVIN_C, A, B, C
 
 # Local configuration
 config["ssid"] = WIFI_AP
@@ -59,7 +62,8 @@ config["server"] = MQTT_HOST
 cur_mode = MODE_OFF
 cur_set_temp = START_TMP
 cur_act_temp = MIN_TEMP  # Need something?
-debounce_time = 0
+
+disable_in_btn = False
 
 
 oven_on_btn = Pin(ST_ON_PIN, Pin.OUT)
@@ -70,7 +74,6 @@ oven_temp_up_btn = Pin(ST_UP_PIN, Pin.OUT)  # is oven on
 oven_temp_up_btn.off()
 oven_temp_down_btn = Pin(ST_DN_PIN, Pin.OUT)
 oven_temp_down_btn.off()
-
 
 
 async def toggle_btn(pin):
@@ -94,6 +97,18 @@ async def wait_pin_change(pin):
         await asyncio.sleep_ms(1)
 
 
+async def wait_analog_pin_change(pin):
+    # wait for pin to change value
+    # it needs to be stable for a continuous 20ms
+    active = 0
+    while active < DEB_TIME:
+        if pin.read_u16() > CONSIDER_OFF:
+            active += 1
+        else:
+            active = 0
+        await asyncio.sleep_ms(1)
+
+
 async def set_on(complete=False):
     await toggle_btn(ST_ON_PIN)
     await temp_up()
@@ -101,64 +116,84 @@ async def set_on(complete=False):
         await toggle_btn(ST_ON_PIN)
 
 
-        
-
-
 async def set_off():
     await toggle_btn(ST_CL_PIN)
 
 
-async def temp_up():
+async def temp_press_up():
     await toggle_btn(ST_UP_PIN)
 
 
-async def temp_dn():
+async def temp_press_dn():
     await toggle_btn(ST_DN_PIN)
 
 
-async def set_temp(set_point):
+async def apply_temp(btn=None, steps=0, delay_req=False):
+    btn.on()
+    oven_delay = steps * BTN_STEP_DELAY
+    if delay_req:
+        oven_delay += BTN_CLD_DELAY
+    else:
+        oven_delay += BTN_HT_DELAY
+    await asyncio.sleep_ms(oven_delay)
+    btn.off()
+
+
+async def temp_up(steps=0, delay_req=False):
+    btn = Pin(ST_UP_PIN, Pin.OUT)
+    await apply_temp(btn=btn, steps=steps, delay_req=delay_req)
+
+
+async def temp_dn(steps=0, delay_req=False):
+    btn = Pin(ST_DN_PIN, Pin.OUT)
+    await apply_temp(btn=btn, steps=steps, delay_req=delay_req)
+
+
+async def set_temp_long_press(set_point):
     global cur_mode
     global cur_set_temp
-    print(f"Cur Mode: {cur_mode}, Cur Set Pnt: {cur_set_temp} Set to: {set_point}")
+    global disable_in_btn
+
+    steps = 0
     direction = None
+    disable_in_btn = True
+
+    print(f"Cur Mode: {cur_mode}, Cur Set Pnt: {cur_set_temp} Set to: {set_point}")
 
     if set_point > MAX_TMP:
         set_point = MAX_TMP
-        print("Dir Up")
 
     if set_point < MIN_TEMP:
         set_point = MIN_TEMP
-        
-    steps = 0
 
-    if set_point == cur_set_temp:
-        steps = 0
-    elif set_point < START_TMP:
-        steps = int((cur_set_temp - set_point) / TMP_STEP)
+    if set_point < cur_set_temp:
+        steps = abs(int((cur_set_temp - set_point) / TMP_STEP))
         direction = DIR_DWN
         print("Dir Dwn: %s Steps" % steps)
-    elif set_point > START_TMP:
-        steps = int((set_point - cur_set_temp) / TMP_STEP)
+
+    if set_point > cur_set_temp:
+        steps = abs(int((set_point - cur_set_temp) / TMP_STEP))
         direction = DIR_UP
         print("Dir Up: %s Steps" % steps)
-    
-    steps = abs(steps)
+
+    delay_req = False
 
     if cur_mode == MODE_OFF:
         await set_on(complete=False)
-        cur_mode = MODE_HEAT
-        
+        # cur_mode = MODE_HEAT
+        delay_req = True
 
-    for i in range(steps):
-        if direction == DIR_UP:
-            await temp_up()
-        if direction == DIR_DWN:
-            await temp_dn()
+    if direction == DIR_UP:
+        await temp_up(steps=steps, delay_req=delay_req)
+
+    if direction == DIR_DWN:
+        await temp_dn(steps=steps, delay_req=delay_req)
 
     if cur_mode == MODE_OFF:
         await set_on(complete=False)
 
     cur_set_temp = set_point
+    disable_in_btn = False
 
 
 async def received_command(command, mtch_topic, client):
@@ -168,26 +203,27 @@ async def received_command(command, mtch_topic, client):
     if mtch_topic == TMP_CMD_TPC:
         print("Set Temp to %s" % command)
         new_temp = int(float(command))
-        if MIN_TEMP < new_temp < MAX_TMP:
+        if MIN_TEMP <= new_temp <= MAX_TMP:
             print("Setting Temp to %s" % new_temp)
-            await set_temp(new_temp)
+            # await set_temp(new_temp)
+            await set_temp_long_press(new_temp)
             await update_temp_set_state(client)
             await update_mode_state(client)
-            print("Set Temp to %s" % cur_set_temp)
+        else:
+            await update_temp_set_state(client)
     elif mtch_topic == MD_CMD_TPC:
         if command in AV_MODES and command != cur_mode:
-            #cur_mode = command
             if command == MODE_OFF:
                 await set_off()
                 cur_set_temp = START_TMP
-                cur_mode = MODE_OFF
+                # cur_mode = MODE_OFF
             if command == MODE_HEAT:
                 await set_on(complete=True)
                 cur_set_temp = START_TMP
-                cur_mode = MODE_HEAT
+                # cur_mode = MODE_HEAT
             await update_temp_set_state(client)
             await update_mode_state(client)
-            print("Set Mode to %s" % cur_mode)
+            # print("Set Mode to %s" % cur_mode)
 
 
 async def update_temp_cur_state(client):
@@ -209,64 +245,72 @@ async def send_config(client):  # Send Config Message
     )
 
 
-async def read_on_button(client):
+async def read_heat_mode(client):
     global cur_mode
-    oven_on_ctl = Pin(ST_ON_C_PIN, Pin.IN, Pin.PULL_UP)
+    oven_on = Pin(ST_HT_IN_PIN, Pin.IN, Pin.PULL_UP)
     while True:
-        print("Wait for BK pin")
-        await wait_pin_change(oven_on_ctl)
-        print("Pin BK")
-        cur_mode = MODE_HEAT
+        if not oven_on.value():
+            cur_mode = MODE_HEAT
+        else:
+            cur_mode = MODE_OFF
+        await update_mode_state(client)
+        print("Wait for BK/BR pin")
+        await wait_pin_change(oven_on)
+        if not oven_on.value():
+            cur_mode = MODE_HEAT
+        else:
+            cur_mode = MODE_OFF
+        print("Pin BK/BR")
         await update_mode_state(client)
 
 
-async def read_clr_button(client):
-    global cur_mode
-    global cur_set_temp
-    oven_clear_off_ctl = Pin(ST_CL_C_PIN, Pin.IN, Pin.PULL_UP)
-    while True:
-        print("Wait for CLR pin")
-        await wait_pin_change(oven_clear_off_ctl)
-        print("Pin CLR")
-        cur_set_temp = START_TMP
-        cur_mode = MODE_OFF
-        await update_temp_set_state(client)
-        await update_mode_state(client)
+# async def read_clr_button(client):
+#     global cur_mode
+#     global cur_set_temp
+#     oven_clear_off_ctl = Pin(ST_CL_C_PIN, Pin.IN, Pin.PULL_UP)
+#     while True:
+#         print("Wait for CLR pin")
+#         await wait_pin_change(oven_clear_off_ctl)
+#         print("Pin CLR")
+#         cur_set_temp = START_TMP
+#         cur_mode = MODE_OFF
+#         await update_temp_set_state(client)
+#         await update_mode_state(client)
 
 
 async def read_up_button(client):
     global cur_set_temp
-    oven_temp_up_ctl = Pin(ST_UP_C_PIN, Pin.IN, Pin.PULL_UP)
+    oven_temp_up_ctl = ADC(ST_UP_AIN_PIN)
     while True:
         print("Wait for UP pin")
-        await wait_pin_change(oven_temp_up_ctl)
+        await wait_analog_pin_change(oven_temp_up_ctl)
         print("Pin UP")
-        if cur_set_temp < MAX_TMP:
+        if cur_set_temp < MAX_TMP and not disable_in_btn:
             cur_set_temp += TMP_STEP
             await update_temp_set_state(client)
 
 
 async def read_dwn_button(client):
     global cur_set_temp
-    oven_temp_down_ctl = Pin(ST_DN_C_PIN, Pin.IN, Pin.PULL_UP)
+    oven_temp_down_ctl = ADC(ST_DN_AIN_PIN)
     while True:
         print("Wait for DWN pin")
-        await wait_pin_change(oven_temp_down_ctl)
+        await wait_analog_pin_change(oven_temp_down_ctl)
         print("Pin DWN")
-        if cur_set_temp > MIN_TEMP:
+        if cur_set_temp > MIN_TEMP and not disable_in_btn:
             cur_set_temp -= TMP_STEP
             await update_temp_set_state(client)
 
 
 async def read_cur_tmp(client):
     global cur_act_temp
-    oven_current_act_temp = ADC(ST_T_IN_PIN)
+    oven_current_act_temp = ADC(ST_T_AIN_PIN)
     while True:
-        temp_val = oven_current_act_temp.read_u16()
+        temp_volts = oven_current_act_temp.read_u16() * 3.3 / 65535
+        temp_r = (temp_volts * 2000) / (3.3 - temp_volts)
+        tk = 1 / (A + (B * math.log(temp_r)) + C * math.pow(math.log(temp_r), 3))
+        cur_act_temp = ((tk - KELVIN_C) * 1.8) + 32
 
-        cur_act_temp = round(
-            (1 / (log(1 / (65535 / temp_val - 1)) / BETA + 1 / 298.15) - KELVIN_C), 1
-        )
         await update_temp_cur_state(client)
         await asyncio.sleep_ms(CUR_TMP_RD_PER)
 
@@ -285,9 +329,9 @@ async def up(client):  # Respond to connectivity being (re)established
         await client.up.wait()  # Wait on an Event
         client.up.clear()
         await client.subscribe(SUB_TPC, 1)  # renew subscriptions
-        await send_config(client) # Send the discovery msg
-        await update_mode_state(client) # Send the current mode
-        await update_temp_set_state(client) # Send the current temp
+        await send_config(client)  # Send the discovery msg
+        await update_mode_state(client)  # Send the current mode
+        await update_temp_set_state(client)  # Send the current temp
 
         #  Will there be any issues here, do we need to cancel existing and restart them?
         # Moved to the main function, for now, still not certain where it should be
@@ -303,11 +347,10 @@ async def main(client):
     for coroutine in (
         up,
         messages,
-        read_up_button,
-        read_dwn_button,
-        read_on_button,
-        read_clr_button,
+        read_heat_mode,
         read_cur_tmp,
+        #read_dwn_button,
+        #read_up_button,
     ):
         asyncio.create_task(coroutine(client))
     while True:
