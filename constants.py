@@ -1,3 +1,4 @@
+import array
 from secrets import UNIQE_ID_PRE
 
 LED_ENABLE = True
@@ -120,6 +121,13 @@ TMP_CUR_TPC = ST_TPC + "/cur_temp"
 
 
 # Temp sensor
+V_IN = 3.27 # TODO: Research how the pico uses analog v_ref, seems like I shouldn't need to do this
+R_TEMP = 2000
+C_F_MULT = 1.8
+C_F_OFFSET = 32
+U16_MAX = 65535
+U12_MAX = 4095
+
 BETA = -410.51
 KELVIN_C = 273.15 
 
@@ -130,3 +138,9 @@ C = 550.7111202e-07
 #tk = 1/(A+(B*math.log(Rt))+C*math.pow(math.log(Rt),3))
 #tc = tk - KELVIN_C
 #tf = (tc*1.8) + 32
+
+# Bandpass filter
+FIR_COEFF = array.array('i', (272,449,-266,-540,-55,-227,-1029,745,3927,1699,-5616,-6594,2766,9228,2766
+  ,-6594,-5616,1699,3927,745,-1029,-227,-55,-540,-266,449,272))
+
+FIR_SCALE = 16
