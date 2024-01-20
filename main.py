@@ -46,7 +46,6 @@ from constants import (
     C_F_MULT,
     C_F_OFFSET,
     U16_MAX,
-    U12_MAX,
 )
 
 from constants import (
@@ -61,7 +60,7 @@ from constants import (
     CONSIDER_OFF,
 )
 
-from constants import KELVIN_C, A, B, C
+from constants import KELVIN_C, A, B, C, T_CORR
 from constants import FIR_COEFF, FIR_SCALE
 
 # Local configuration
@@ -72,6 +71,7 @@ config["server"] = MQTT_HOST
 cur_mode = MODE_OFF
 cur_set_temp = START_TMP
 cur_act_temp = MIN_TEMP  # Need something?
+cur_act_temp_raw = 0
 
 disable_in_btn = False
 
@@ -253,12 +253,12 @@ async def read_heat_mode(client):
     while True:
         if not oven_on.value():
             cur_mode = MODE_HEAT
-            cur_set_temp = START_TMP
         else:
             cur_mode = MODE_OFF
         await update_mode_state(client)
         print("Wait for BK/BR pin")
         await wait_pin_change(oven_on)
+        cur_set_temp = START_TMP
         if not oven_on.value():
             cur_mode = MODE_HEAT
         else:
@@ -309,25 +309,27 @@ async def read_dwn_button(client):
 async def read_cur_tmp(client):
     global cur_act_temp_raw
     oven_current_act_temp = ADC(ST_T_AIN_PIN)
-    ncoeffs = len(FIR_COEFF)
-    data = array('i', (0 for _ in range(ncoeffs + 3)))
-    data[0] = ncoeffs
-    data[1] = FIR_SCALE
-    
+    data = array("i", (0 for _ in range(19)))  # Average over 16 samples
+    data[0] = len(data)
+
+    print("Starting temp read loop")
     while True:
-        cur_act_temp_raw = fir(data, FIR_COEFF, oven_current_act_temp.read()) // FIR_SCALE      
+        raw = oven_current_act_temp.read_u16()
+        cur_act_temp_raw = avg(data, raw, 4)
         await asyncio.sleep_ms(5)
 
 
 async def update_cur_temp(client):
-        global cur_act_temp
-        while True:
-            temp_volts = cur_act_temp_raw * V_IN / U12_MAX
+    global cur_act_temp
+    print("Starting temp loop")
+    while True:
+        if cur_act_temp_raw > 0:
+            temp_volts = (cur_act_temp_raw * V_IN) / U16_MAX
             temp_r = (temp_volts * R_TEMP) / (V_IN - temp_volts)
             tk = 1 / (A + (B * math.log(temp_r)) + C * math.pow(math.log(temp_r), 3))
-            cur_act_temp = ((tk - KELVIN_C) * C_F_MULT) + C_F_OFFSET
+            cur_act_temp = ((tk - KELVIN_C) * C_F_MULT) + C_F_OFFSET + T_CORR
             await update_temp_cur_state(client)
-            await asyncio.sleep_ms(CUR_TMP_RD_PER)
+        await asyncio.sleep_ms(CUR_TMP_RD_PER)
 
 
 async def messages(client):  # Respond to incoming messages
@@ -366,8 +368,8 @@ async def main(client):
         update_cur_temp,
         read_cur_tmp,
         # TODO: figure out a way to read temp buttons
-        #read_dwn_button,
-        #read_up_button,
+        # read_dwn_button,
+        # read_up_button,
     ):
         asyncio.create_task(coroutine(client))
     while True:

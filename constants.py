@@ -7,9 +7,9 @@ LED_PIN = "LED"
 # Out Pins (7)
 # Start Top left, DN-Right-UP
 ST_ON_PIN = 5  # Bake
-#ST_BR_PIN = 3  # Broil
-#ST_TM_PIN = 4  # Timer
-#ST_CK_PIN = 5  # Clock
+# ST_BR_PIN = 3  # Broil
+# ST_TM_PIN = 4  # Timer
+# ST_CK_PIN = 5  # Clock
 ST_CL_PIN = 2  # CLR/OFF
 ST_DN_PIN = 3  # DWN
 ST_UP_PIN = 4  # UP
@@ -18,12 +18,10 @@ ST_UP_PIN = 4  # UP
 # In Pins
 # Not bothering to monitor the other inputs, just don't see a point
 ST_HT_IN_PIN = 7  # Heat Mode, Bake or Broil
-ST_UP_AIN_PIN = 26 # Temp Up
+ST_UP_AIN_PIN = 26  # Temp Up
 ST_DN_AIN_PIN = 27  # Temp Dwn
 
-CONSIDER_OFF = 30000 # Analog pin value to consider off
-
-
+CONSIDER_OFF = 30000  # Analog pin value to consider off
 
 
 # LED In Pins
@@ -47,9 +45,9 @@ DIR_UP = "U"
 
 BTN_DELAY = 100  # ms
 
-BTN_STEP_DELAY = 200 # ms
-BTN_HT_DELAY = 200 # ms
-BTN_CLD_DELAY = 300 # ms
+BTN_STEP_DELAY = 200  # ms
+BTN_HT_DELAY = 200  # ms
+BTN_CLD_DELAY = 300  # ms
 
 CUR_TMP_RD_PER = 5000
 
@@ -121,7 +119,7 @@ TMP_CUR_TPC = ST_TPC + "/cur_temp"
 
 
 # Temp sensor
-V_IN = 3.27 # TODO: Research how the pico uses analog v_ref, seems like I shouldn't need to do this
+V_IN = 3.29  # TODO: Research how the pico uses analog v_ref, seems like I shouldn't need to do this
 R_TEMP = 2000
 C_F_MULT = 1.8
 C_F_OFFSET = 32
@@ -129,18 +127,42 @@ U16_MAX = 65535
 U12_MAX = 4095
 
 BETA = -410.51
-KELVIN_C = 273.15 
+KELVIN_C = 273.15
+T_CORR = 15
 
 A = 63.93648271e-03
 B = -113.5216743e-04
 C = 550.7111202e-07
-#Rt = (Vout * R1) / (Vin - Vout)
-#tk = 1/(A+(B*math.log(Rt))+C*math.pow(math.log(Rt),3))
-#tc = tk - KELVIN_C
-#tf = (tc*1.8) + 32
+# Rt = (Vout * R1) / (Vin - Vout)
+# tk = 1/(A+(B*math.log(Rt))+C*math.pow(math.log(Rt),3))
+# tc = tk - KELVIN_C
+# tf = (tc*1.8) + 32
 
 # Bandpass filter
-FIR_COEFF = array.array('i', (272,449,-266,-540,-55,-227,-1029,745,3927,1699,-5616,-6594,2766,9228,2766
-  ,-6594,-5616,1699,3927,745,-1029,-227,-55,-540,-266,449,272))
+# FIR_COEFF = array.array('i', (272,449,-266,-540,-55,-227,-1029,745,3927,1699,-5616,-6594,2766,9228,2766
+#    ,-6594,-5616,1699,3927,745,-1029,-227,-55,-540,-266,449,272))
+
+FIR_COEFF = array.array(
+    "i",
+    (
+        -1432,
+        0,
+        1630,
+        0,
+        3450,
+        0,
+        -12571,
+        0,
+        17360,
+        0,
+        -12571,
+        0,
+        3450,
+        0,
+        1630,
+        0,
+        -1432,
+    ),
+)
 
 FIR_SCALE = 16
